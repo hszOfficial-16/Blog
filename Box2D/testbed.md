@@ -241,7 +241,48 @@ struct Camera
 
 然后是 `UpdateUI` 函数，它负责绘制了 `Tools` 交互菜单，关于这个交互菜单的实现细节我们不做阐述。有趣的是里面还调用了 `s_test->UpdateUI`，某些特定的测试实例譬如 `sensors` 有自己的数据需要调整，只需要覆盖重写这个函数即可。
 
-最后，调用测试实例的 Step 方法来更新当前实例，所有测试实例类均继承于 Test 类，在这里调用的这个 Step 方法便是整个实例的精髓，里面除了对 Box2D 对象的操作，另外的就是渲染整个场景，并更新统计表（统计与 Box2D 原理相关的变量）。这些我们可以在后面实例分析中慢慢看。
+最后，调用测试实例的 Step 方法来更新当前实例，所有测试实例类均继承于 Test 类，而在这里调用的这个 Step 方法便是这个类的精髓，于是乎我们最后只需要分析分析这个 Step 方法便好。
+
+```C++
+	float timeStep = settings.m_hertz > 0.0f ? 1.0f / settings.m_hertz : float(0.0f);
+
+	if (settings.m_pause)
+	{
+		if (settings.m_singleStep)
+		{
+			settings.m_singleStep = 0;
+		}
+		else
+		{
+			timeStep = 0.0f;
+		}
+
+		g_debugDraw.DrawString(5, m_textLine, "****PAUSED****");
+		m_textLine += m_textIncrement;
+	}
+```
+
+timeStep 用于 `b2World::Step` 中的步进时间参数，而上述代码可以实现暂停和单帧步进的操作。
+
+m_testLine 是一个 int32 的值，表示 testbed 中左上角显示的字符串的 y 轴坐标。因为左上角的文字信息是从上往下排版的，所以在打印完当前这串字符后得让 m_testLine 加上 m_testIncrement，使下一串字符显示在当前这串的下方。
+
+```C++
+	uint32 flags = 0;
+	flags += settings.m_drawShapes * b2Draw::e_shapeBit;
+	flags += settings.m_drawJoints * b2Draw::e_jointBit;
+	flags += settings.m_drawAABBs * b2Draw::e_aabbBit;
+	flags += settings.m_drawCOMs * b2Draw::e_centerOfMassBit;
+	g_debugDraw.SetFlags(flags);
+
+	m_world->Step(timeStep, settings.m_velocityIterations, settings.m_positionIterations);
+
+	m_world->DebugDraw();
+    g_debugDraw.Flush();
+```
+
+这一段将 flags 当做位标志来使用，判断某一对象应不应该绘制，而绘制的过程都在 m_world 的 DebugDraw 方法中，这个方法最后会计算出 OpenGL 应该绘制出来的顶点，最后在后面的 Flush 方法中设置好 OpenGL 的状态一并渲染在帧缓冲区中。
+
+剩下的代码则负责显示 `统计信息`、`世界配置`、`碰撞接触点`、还有空格键释放出来的那个子弹（或者说炸弹）。
 
 ```C++
 	glfwSwapBuffers(g_mainWindow);
@@ -257,7 +298,7 @@ struct Camera
 	glfwPollEvents();
 ```
 
-`glfwSwapBuffers` 交换帧缓冲画面将其渲染出来，
+`glfwSwapBuffers` 交换帧缓冲画面将渲染好的内容显示出来，
 
 然后检测当前是否更换实例，如果更换了测试实例，便删除当前实例并构造新的那个，
 
